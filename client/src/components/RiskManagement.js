@@ -7,6 +7,11 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Typography,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
   Table,
   TableBody,
   TableCell,
@@ -15,18 +20,17 @@ import {
   TableRow,
   Paper,
   IconButton,
-  MenuItem,
-  Typography,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { supabase } from '../supabaseClient';
 
 const RiskManagement = () => {
-  const [risks, setRisks] = useState([]);
   const [open, setOpen] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [currentRisk, setCurrentRisk] = useState({
+  const [risks, setRisks] = useState([]);
+  const [editingRisk, setEditingRisk] = useState(null);
+  const [availableRiskTypes, setAvailableRiskTypes] = useState([]);
+  const [formData, setFormData] = useState({
     risk_id: '',
     risk_description: '',
     asset: '',
@@ -40,12 +44,37 @@ const RiskManagement = () => {
     risk_level: ''
   });
 
-  const riskLevels = ['Low', 'Medium', 'High'];
-  const riskTypes = ['Strategic', 'Operational', 'Financial', 'Compliance', 'Technology'];
-
   useEffect(() => {
     fetchRisks();
+    fetchRiskTypes();
+    // Set up real-time subscription
+    const subscription = supabase
+      .channel('risks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'risks' }, fetchRisks)
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
+
+  const fetchRiskTypes = async () => {
+    try {
+      // Fetch distinct risk types from the database
+      const { data, error } = await supabase
+        .from('risks')
+        .select('risk_type')
+        .not('risk_type', 'is', null);
+      
+      if (error) throw error;
+      
+      // Get unique risk types
+      const uniqueTypes = [...new Set(data.map(item => item.risk_type))];
+      setAvailableRiskTypes(uniqueTypes);
+    } catch (error) {
+      console.error('Error fetching risk types:', error);
+    }
+  };
 
   const fetchRisks = async () => {
     try {
@@ -63,8 +92,8 @@ const RiskManagement = () => {
 
   const handleOpen = () => {
     setOpen(true);
-    setEditMode(false);
-    setCurrentRisk({
+    setEditingRisk(null);
+    setFormData({
       risk_id: '',
       risk_description: '',
       asset: '',
@@ -79,94 +108,94 @@ const RiskManagement = () => {
     });
   };
 
-  const handleClose = () => {
-    setOpen(false);
+  const handleEdit = (risk) => {
+    setEditingRisk(risk);
+    setFormData({
+      risk_id: risk.risk_id,
+      risk_description: risk.risk_description,
+      asset: risk.asset,
+      date: risk.date,
+      risk_type: risk.risk_type,
+      owner: risk.owner,
+      mitigation: risk.mitigation,
+      probability: risk.probability,
+      impact_score: risk.impact_score,
+      risk_score: risk.risk_score,
+      risk_level: risk.risk_level
+    });
+    setOpen(true);
   };
 
-  const handleEdit = (risk) => {
-    setCurrentRisk({
-      ...risk,
-      date: new Date(risk.date).toISOString().split('T')[0],
-    });
-    setEditMode(true);
-    setOpen(true);
+  const handleClose = () => {
+    setOpen(false);
+    setEditingRisk(null);
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    let processedValue = value;
+    let updatedFormData = {
+      ...formData,
+      [name]: value
+    };
 
-    // Convert numeric fields to numbers
-    if (['probability', 'impact_score', 'risk_score'].includes(name)) {
-      processedValue = value === '' ? '' : Number(value);
-    }
-
-    setCurrentRisk(prev => ({
-      ...prev,
-      [name]: processedValue
-    }));
-
-    // Automatically calculate risk score if probability and impact_score are set
-    if ((name === 'probability' || name === 'impact_score') && currentRisk.probability && currentRisk.impact_score) {
-      const probability = Number(name === 'probability' ? value : currentRisk.probability);
-      const impactScore = Number(name === 'impact_score' ? value : currentRisk.impact_score);
-      const score = probability * impactScore;
-      const level = score >= 15 ? 'High' : score >= 8 ? 'Medium' : 'Low';
+    // Calculate risk score and level when probability or impact changes
+    if (name === 'probability' || name === 'impact_score') {
+      const probability = name === 'probability' ? Number(value) : Number(formData.probability);
+      const impact = name === 'impact_score' ? Number(value) : Number(formData.impact_score);
       
-      setCurrentRisk(prev => ({
-        ...prev,
-        risk_score: score,
-        risk_level: level
-      }));
+      if (!isNaN(probability) && !isNaN(impact)) {
+        const riskScore = probability * impact;
+        updatedFormData.risk_score = riskScore;
+        
+        // Determine risk level based on risk score
+        if (riskScore >= 15) {
+          updatedFormData.risk_level = 'High';
+        } else if (riskScore >= 8) {
+          updatedFormData.risk_level = 'Medium';
+        } else {
+          updatedFormData.risk_level = 'Low';
+        }
+      }
     }
+
+    setFormData(updatedFormData);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
+  const handleSubmit = async () => {
     try {
-      const preparedRisk = {
-        ...currentRisk,
-        probability: Number(currentRisk.probability),
-        impact_score: Number(currentRisk.impact_score),
-        risk_score: Number(currentRisk.risk_score)
-      };
-
-      if (editMode) {
+      if (editingRisk) {
         const { error } = await supabase
           .from('risks')
-          .update(preparedRisk)
-          .eq('risk_id', preparedRisk.risk_id);
+          .update(formData)
+          .eq('risk_id', editingRisk.risk_id);
+        
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('risks')
-          .insert([preparedRisk]);
+          .insert([formData]);
+        
         if (error) throw error;
       }
-      
-      fetchRisks();
+
       handleClose();
+      fetchRisks();
     } catch (error) {
       console.error('Error saving risk:', error);
-      alert('Error saving risk: ' + error.message);
     }
   };
 
-  const handleDelete = async (riskId) => {
-    if (window.confirm('Are you sure you want to delete this risk?')) {
-      try {
-        const { error } = await supabase
-          .from('risks')
-          .delete()
-          .eq('risk_id', riskId);
-        
-        if (error) throw error;
-        fetchRisks();
-      } catch (error) {
-        console.error('Error deleting risk:', error);
-        alert('Error deleting risk: ' + error.message);
-      }
+  const handleDelete = async (risk) => {
+    try {
+      const { error } = await supabase
+        .from('risks')
+        .delete()
+        .eq('risk_id', risk.risk_id);
+      
+      if (error) throw error;
+      fetchRisks();
+    } catch (error) {
+      console.error('Error deleting risk:', error);
     }
   };
 
@@ -207,7 +236,7 @@ const RiskManagement = () => {
                   <IconButton onClick={() => handleEdit(risk)}>
                     <EditIcon />
                   </IconButton>
-                  <IconButton onClick={() => handleDelete(risk.risk_id)}>
+                  <IconButton onClick={() => handleDelete(risk)}>
                     <DeleteIcon />
                   </IconButton>
                 </TableCell>
@@ -218,30 +247,29 @@ const RiskManagement = () => {
       </TableContainer>
 
       <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-        <DialogTitle>{editMode ? 'Edit Risk' : 'Add New Risk'}</DialogTitle>
+        <DialogTitle>{editingRisk ? 'Edit Risk' : 'Add New Risk'}</DialogTitle>
         <DialogContent>
-          <Box component="form" sx={{ display: 'grid', gap: 2, mt: 2 }}>
+          <Box sx={{ display: 'grid', gap: 2, pt: 2 }}>
             <TextField
               name="risk_id"
               label="Risk ID"
-              value={currentRisk.risk_id || ''}
+              value={formData.risk_id}
               onChange={handleInputChange}
-              disabled={editMode}
               required
             />
             <TextField
               name="risk_description"
               label="Risk Description"
-              multiline
-              rows={2}
-              value={currentRisk.risk_description || ''}
+              value={formData.risk_description}
               onChange={handleInputChange}
+              multiline
+              rows={3}
               required
             />
             <TextField
               name="asset"
               label="Asset"
-              value={currentRisk.asset || ''}
+              value={formData.asset}
               onChange={handleInputChange}
               required
             />
@@ -249,46 +277,46 @@ const RiskManagement = () => {
               name="date"
               label="Date"
               type="date"
-              value={currentRisk.date || ''}
+              value={formData.date}
               onChange={handleInputChange}
               required
-              InputLabelProps={{ shrink: true }}
             />
-            <TextField
-              name="risk_type"
-              label="Risk Type"
-              select
-              value={currentRisk.risk_type || ''}
-              onChange={handleInputChange}
-              required
-            >
-              {riskTypes.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {type}
-                </MenuItem>
-              ))}
-            </TextField>
+            <FormControl required>
+              <InputLabel>Risk Type</InputLabel>
+              <Select
+                name="risk_type"
+                value={formData.risk_type}
+                onChange={handleInputChange}
+                label="Risk Type"
+              >
+                {availableRiskTypes.map((type) => (
+                  <MenuItem key={type} value={type}>
+                    {type}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <TextField
               name="owner"
               label="Owner"
-              value={currentRisk.owner || ''}
+              value={formData.owner}
               onChange={handleInputChange}
               required
             />
             <TextField
               name="mitigation"
               label="Mitigation"
+              value={formData.mitigation}
+              onChange={handleInputChange}
               multiline
               rows={2}
-              value={currentRisk.mitigation || ''}
-              onChange={handleInputChange}
               required
             />
             <TextField
               name="probability"
               label="Probability (1-5)"
               type="number"
-              value={currentRisk.probability || ''}
+              value={formData.probability}
               onChange={handleInputChange}
               inputProps={{ min: 1, max: 5 }}
               required
@@ -297,7 +325,7 @@ const RiskManagement = () => {
               name="impact_score"
               label="Impact Score (1-5)"
               type="number"
-              value={currentRisk.impact_score || ''}
+              value={formData.impact_score}
               onChange={handleInputChange}
               inputProps={{ min: 1, max: 5 }}
               required
@@ -305,29 +333,21 @@ const RiskManagement = () => {
             <TextField
               name="risk_score"
               label="Risk Score"
-              value={currentRisk.risk_score || ''}
-              disabled
+              value={formData.risk_score}
+              InputProps={{ readOnly: true }}
             />
             <TextField
               name="risk_level"
               label="Risk Level"
-              select
-              value={currentRisk.risk_level || ''}
-              onChange={handleInputChange}
-              required
-            >
-              {riskLevels.map((level) => (
-                <MenuItem key={level} value={level}>
-                  {level}
-                </MenuItem>
-              ))}
-            </TextField>
+              value={formData.risk_level}
+              InputProps={{ readOnly: true }}
+            />
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClose}>Cancel</Button>
           <Button onClick={handleSubmit} variant="contained" color="primary">
-            {editMode ? 'Update' : 'Add'}
+            {editingRisk ? 'Update' : 'Add'}
           </Button>
         </DialogActions>
       </Dialog>

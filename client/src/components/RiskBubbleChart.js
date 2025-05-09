@@ -41,62 +41,130 @@ const RiskBubbleChart = ({ risks }) => {
     Technology: '#0088fe'
   };
 
-  return (
-    <ResponsiveContainer width="100%" height={300}>
-      <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-        <CartesianGrid />
-        <XAxis 
-          type="number" 
-          dataKey="x" 
-          name="Probability" 
-          unit="" 
-          domain={[0, 5]}
-          label={{ value: 'Probability', position: 'bottom' }}
-        />
-        <YAxis 
-          type="number" 
-          dataKey="y" 
-          name="Impact" 
-          unit="" 
-          domain={[0, 5]}
-          label={{ value: 'Impact', angle: -90, position: 'left' }}
-        />
-        <Tooltip 
-          cursor={{ strokeDasharray: '3 3' }}
-          content={({ payload }) => {
-            if (payload && payload.length) {
-              const data = payload[0].payload;
-              return (
-                <div style={{ 
-                  backgroundColor: 'white', 
-                  padding: '10px', 
-                  border: '1px solid #ccc',
-                  borderRadius: '4px'
-                }}>
-                  <p><strong>Risk ID:</strong> {data.name}</p>
-                  <p><strong>Description:</strong> {data.description}</p>
-                  <p><strong>Type:</strong> {data.type}</p>
-                  <p><strong>Probability:</strong> {data.x}</p>
-                  <p><strong>Impact:</strong> {data.y}</p>
-                  <p><strong>Risk Score:</strong> {data.z}</p>
-                  <p><strong>Risk Level:</strong> {data.level}</p>
-                </div>
-              );
-            }
-            return null;
-          }}
-        />
-        <Legend />
-        {Object.entries(risksByType).map(([type, data]) => (
-          <Scatter
-            key={type}
-            name={type}
-            data={data}
-            fill={COLORS[type] || '#999999'}
-          />
+  // Custom legend with horizontal layout
+  const CustomizedLegend = (props) => {
+    const { payload } = props;
+    return (
+      <div style={{ 
+        display: 'flex', 
+        flexWrap: 'wrap', 
+        justifyContent: 'center',
+        padding: '10px',
+        gap: '15px', // Add space between items
+      }}>
+        {payload.map((entry, index) => (
+          <div
+            key={`item-${index}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              border: '1px solid #eee'
+            }}
+          >
+            <div
+              style={{
+                width: '12px',
+                height: '12px',
+                backgroundColor: entry.color,
+                marginRight: '8px',
+                borderRadius: '50%'
+              }}
+            />
+            <span style={{ fontSize: '0.9rem' }}>{entry.value}</span>
+          </div>
         ))}
-      </ScatterChart>
-    </ResponsiveContainer>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ width: '100%', height: '500px' }}> {/* Increased height for better spacing */}
+      <ResponsiveContainer>
+        <ScatterChart
+          margin={{
+            top: 20,
+            right: 30,
+            bottom: 80, // Increased bottom margin for legend
+            left: 40,
+          }}
+        >
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis
+            type="number"
+            dataKey="x"
+            name="Probability"
+            domain={[0, 5]}
+            label={{
+              value: 'Probability',
+              position: 'bottom',
+              offset: 5
+            }}
+            ticks={[0, 1, 2, 3, 4, 5]}
+          />
+          <YAxis
+            type="number"
+            dataKey="y"
+            name="Impact"
+            domain={[0, 5]}
+            label={{
+              value: 'Impact',
+              angle: -90,
+              position: 'left',
+              offset: 5
+            }}
+            ticks={[0, 1, 2, 3, 4, 5]}
+          />
+          <Tooltip
+            cursor={{ strokeDasharray: '3 3' }}
+            content={({ payload }) => {
+              if (payload && payload.length) {
+                const data = payload[0].payload;
+                return (
+                  <div style={{
+                    backgroundColor: 'white',
+                    padding: '12px',
+                    border: '1px solid #ccc',
+                    borderRadius: '6px',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}>
+                    <p style={{ margin: '4px 0' }}><strong>Risk ID:</strong> {data.name}</p>
+                    <p style={{ margin: '4px 0' }}><strong>Description:</strong> {data.description}</p>
+                    <p style={{ margin: '4px 0' }}><strong>Type:</strong> {data.type}</p>
+                    <p style={{ margin: '4px 0' }}><strong>Probability:</strong> {data.x}</p>
+                    <p style={{ margin: '4px 0' }}><strong>Impact:</strong> {data.y}</p>
+                    <p style={{ margin: '4px 0' }}><strong>Risk Score:</strong> {data.z}</p>
+                    <p style={{ margin: '4px 0' }}><strong>Risk Level:</strong> {data.level}</p>
+                  </div>
+                );
+              }
+              return null;
+            }}
+          />
+          <Legend
+            content={<CustomizedLegend />}
+            verticalAlign="bottom"
+            align="center"
+            wrapperStyle={{
+              paddingTop: '20px',
+              bottom: 0
+            }}
+          />
+          {Object.entries(risksByType).map(([type, data]) => (
+            <Scatter
+              key={type}
+              name={type}
+              data={data}
+              fill={COLORS[type] || '#999999'}
+              shape="circle"
+              legendType="circle"
+            />
+          ))}
+        </ScatterChart>
+      </ResponsiveContainer>
+    </div>
   );
 };
 
